@@ -1,0 +1,330 @@
+<!-- templates/puzzles.html -->
+{% extends "base.html" %}
+
+{% block title %}Chess Master - Puzzles{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h1><i class="fas fa-puzzle-piece"></i> Chess Puzzles</h1>
+    <p style="font-size: 1.1rem; margin: 1rem 0; color: #666;">
+        Sharpen your tactical skills with our collection of chess puzzles. Find the best move in each position!
+    </p>
+</div>
+
+<div class="puzzle-container">
+    <div class="puzzle-info">
+        <div class="card">
+            <h3>Puzzle #<span id="puzzleNumber">1</span></h3>
+            <div class="stat-card" style="margin: 1rem 0;">
+                <div class="stat-number" id="puzzleRating">1200</div>
+                <div>Puzzle Rating</div>
+            </div>
+            
+            <div id="puzzleDescription" style="margin: 1rem 0; padding: 1rem; background: #f8f9fa; border-radius: 8px;">
+                <strong>White to move.</strong><br>
+                Find the best continuation for White.
+            </div>
+            
+            <div class="timer" id="puzzleTimer">
+                Time: 00:00
+            </div>
+            
+            <div style="display: flex; gap: 1rem; margin: 1rem 0;">
+                <button class="btn" id="hintBtn">
+                    <i class="fas fa-lightbulb"></i> Hint
+                </button>
+                <button class="btn btn-secondary" id="skipBtn">
+                    <i class="fas fa-forward"></i> Skip
+                </button>
+                <button class="btn btn-success" id="newPuzzleBtn">
+                    <i class="fas fa-refresh"></i> New Puzzle
+                </button>
+            </div>
+            
+            <div id="puzzleResult" style="display: none; margin: 1rem 0; padding: 1rem; border-radius: 8px;">
+                <!-- Result will be shown here -->
+            </div>
+        </div>
+        
+        <div class="card">
+            <h4><i class="fas fa-list"></i> Move History</h4>
+            <div class="move-list" id="moveHistory">
+                <div class="move-item">Click on a piece to start</div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="puzzle-board">
+        <div class="card">
+            <div id="puzzleBoard"></div>
+            <div style="text-align: center; margin-top: 1rem;">
+                <small style="color: #666;">Click and drag pieces to make your move</small>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Hint Modal -->
+<div id="hintModal" class="modal">
+    <div class="modal-content">
+        <span class="close" id="closeHint">&times;</span>
+        <h2><i class="fas fa-lightbulb"></i> Hint</h2>
+        <div id="hintContent">
+            <p>Look for tactical motifs like pins, forks, or discovered attacks.</p>
+        </div>
+    </div>
+</div>
+
+<!-- Result Modal -->
+<div id="resultModal" class="modal">
+    <div class="modal-content">
+        <span class="close" id="closeResult">&times;</span>
+        <h2 id="resultTitle">Puzzle Complete!</h2>
+        <div id="resultContent">
+            <!-- Result details will be shown here -->
+        </div>
+        <button class="btn" id="nextPuzzleBtn">
+            <i class="fas fa-arrow-right"></i> Next Puzzle
+        </button>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    let currentPuzzle = null;
+    let selectedSquare = null;
+    let moveHistory = [];
+    let puzzleStartTime = null;
+    let timerInterval = null;
+    let playerColor = 'white';
+    
+    // Sample puzzles data (in a real app, this would come from the server)
+    const samplePuzzles = [
+        {
+            id: 1,
+            fen: 'r1bqkb1r/pppp1ppp/2n2n2/4p3/2B1P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 4 4',
+            solution: ['Ng5', 'Qf6', 'Nxf7'],
+            description: 'White to move. Find the winning tactical sequence.',
+            rating: 1200,
+            theme: 'Fork'
+        },
+        {
+            id: 2,
+            fen: 'rnbqkbnr/ppp2ppp/4p3/3p4/2PP4/8/PP2PPPP/RNBQKBNR w KQkq - 0 3',
+            solution: ['cxd5', 'exd5', 'Qxd5'],
+            description: 'White to move. Capture the central pawn.',
+            rating: 1000,
+            theme: 'Tactics'
+        },
+        {
+            id: 3,
+            fen: 'r1bqk2r/pppp1ppp/2n2n2/2b1p3/2B1P3/3P1N2/PPP2PPP/RNBQK2R w KQkq - 4 5',
+            solution: ['Bxf7+', 'Kxf7', 'Ng5+'],
+            description: 'White to move. Find the forcing continuation.',
+            rating: 1400,
+            theme: 'Sacrifice'
+        }
+    ];
+    
+    let currentPuzzleIndex = 0;
+    
+    function loadPuzzle(puzzleIndex = 0) {
+        currentPuzzle = samplePuzzles[puzzleIndex];
+        if (!currentPuzzle) {
+            currentPuzzleIndex = 0;
+            currentPuzzle = samplePuzzles[0];
+        }
+        
+        // Update puzzle info
+        document.getElementById('puzzleNumber').textContent = currentPuzzle.id;
+        document.getElementById('puzzleRating').textContent = currentPuzzle.rating;
+        document.getElementById('puzzleDescription').innerHTML = `<strong>${currentPuzzle.description}</strong>`;
+        
+        // Create board
+        createChessBoard(currentPuzzle.fen, 'puzzleBoard');
+        
+        // Reset game state
+        selectedSquare = null;
+        moveHistory = [];
+        updateMoveHistory();
+        hideResult();
+        
+        // Start timer
+        startTimer();
+        
+        // Add click handlers to squares
+        addSquareClickHandlers();
+    }
+    
+    function addSquareClickHandlers() {
+        const squares = document.querySelectorAll('#puzzleBoard .chess-square');
+        squares.forEach(square => {
+            square.addEventListener('click', handleSquareClick);
+        });
+    }
+    
+    function handleSquareClick(event) {
+        const square = event.target;
+        const rank = parseInt(square.dataset.rank);
+        const file = parseInt(square.dataset.file);
+        
+        if (selectedSquare) {
+            // Make move
+            const fromRank = selectedSquare.rank;
+            const fromFile = selectedSquare.file;
+            
+            if (fromRank !== rank || fromFile !== file) {
+                makeMove(fromRank, fromFile, rank, file);
+            }
+            
+            // Deselect
+            document.querySelectorAll('.chess-square.selected').forEach(sq => {
+                sq.classList.remove('selected');
+            });
+            selectedSquare = null;
+        } else {
+            // Select square if it has a piece
+            if (square.textContent.trim()) {
+                selectedSquare = { rank, file, element: square };
+                square.classList.add('selected');
+            }
+        }
+    }
+    
+    function makeMove(fromRank, fromFile, toRank, toFile) {
+        // Convert to algebraic notation (simplified)
+        const fromSquare = String.fromCharCode(97 + fromFile) + (8 - fromRank);
+        const toSquare = String.fromCharCode(97 + toFile) + (8 - toRank);
+        const move = fromSquare + toSquare;
+        
+        // Add to move history
+        moveHistory.push(move);
+        updateMoveHistory();
+        
+        // Check if move is correct
+        checkMove(move);
+    }
+    
+    function checkMove(move) {
+        // Simplified move checking (in a real app, this would use chess.js or similar)
+        const expectedMoves = currentPuzzle.solution;
+        const moveIndex = moveHistory.length - 1;
+        
+        if (moveIndex < expectedMoves.length) {
+            // For this demo, we'll just check if any move is made
+            if (moveIndex === expectedMoves.length - 1) {
+                // Puzzle completed
+                showResult(true, `Excellent! You solved the puzzle in ${moveHistory.length} moves.`);
+                stopTimer();
+            } else {
+                // Continue puzzle
+                showResult(false, `Good move! Continue...`);
+                setTimeout(hideResult, 2000);
+            }
+        }
+    }
+    
+    function updateMoveHistory() {
+        const historyEl = document.getElementById('moveHistory');
+        if (moveHistory.length === 0) {
+            historyEl.innerHTML = '<div class="move-item">Click on a piece to start</div>';
+        } else {
+            historyEl.innerHTML = moveHistory.map((move, index) => 
+                `<div class="move-item">${index + 1}. ${move}</div>`
+            ).join('');
+        }
+    }
+    
+    function startTimer() {
+        puzzleStartTime = Date.now();
+        timerInterval = setInterval(updateTimer, 1000);
+    }
+    
+    function stopTimer() {
+        if (timerInterval) {
+            clearInterval(timerInterval);
+            timerInterval = null;
+        }
+    }
+    
+    function updateTimer() {
+        if (!puzzleStartTime) return;
+        
+        const elapsed = Math.floor((Date.now() - puzzleStartTime) / 1000);
+        const minutes = Math.floor(elapsed / 60);
+        const seconds = elapsed % 60;
+        
+        document.getElementById('puzzleTimer').textContent = 
+            `Time: ${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+    }
+    
+    function showResult(isSuccess, message) {
+        const resultEl = document.getElementById('puzzleResult');
+        resultEl.style.display = 'block';
+        resultEl.style.backgroundColor = isSuccess ? '#d4edda' : '#f8d7da';
+        resultEl.style.color = isSuccess ? '#155724' : '#721c24';
+        resultEl.style.border = `1px solid ${isSuccess ? '#c3e6cb' : '#f5c6cb'}`;
+        resultEl.innerHTML = `<i class="fas fa-${isSuccess ? 'check' : 'times'}"></i> ${message}`;
+    }
+    
+    function hideResult() {
+        document.getElementById('puzzleResult').style.display = 'none';
+    }
+    
+    function showHint() {
+        const hints = [
+            "Look for checks, captures, and threats.",
+            "Consider all of your opponent's possible responses.",
+            "Sometimes the best move is a quiet positional move.",
+            "Look for tactical motifs like pins, forks, and skewers.",
+            "Control the center and develop your pieces."
+        ];
+        
+        const randomHint = hints[Math.floor(Math.random() * hints.length)];
+        document.getElementById('hintContent').innerHTML = `<p>${randomHint}</p>`;
+        document.getElementById('hintModal').style.display = 'block';
+    }
+    
+    function nextPuzzle() {
+        currentPuzzleIndex = (currentPuzzleIndex + 1) % samplePuzzles.length;
+        loadPuzzle(currentPuzzleIndex);
+    }
+    
+    function skipPuzzle() {
+        showResult(false, `Puzzle skipped. The solution was: ${currentPuzzle.solution.join(', ')}`);
+        stopTimer();
+        setTimeout(() => {
+            nextPuzzle();
+        }, 3000);
+    }
+    
+    // Event listeners
+    document.addEventListener('DOMContentLoaded', function() {
+        // Load first puzzle
+        loadPuzzle(0);
+        
+        // Button event listeners
+        document.getElementById('hintBtn').addEventListener('click', showHint);
+        document.getElementById('skipBtn').addEventListener('click', skipPuzzle);
+        document.getElementById('newPuzzleBtn').addEventListener('click', () => loadPuzzle(currentPuzzleIndex));
+        document.getElementById('nextPuzzleBtn').addEventListener('click', nextPuzzle);
+        
+        // Modal event listeners
+        document.getElementById('closeHint').addEventListener('click', () => {
+            document.getElementById('hintModal').style.display = 'none';
+        });
+        
+        document.getElementById('closeResult').addEventListener('click', () => {
+            document.getElementById('resultModal').style.display = 'none';
+        });
+        
+        // Close modals when clicking outside
+        window.addEventListener('click', function(event) {
+            if (event.target.classList.contains('modal')) {
+                event.target.style.display = 'none';
+            }
+        });
+    });
+</script>
+{% endblock %}
