@@ -1,0 +1,792 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chess vs Stockfish</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: linear-gradient(135deg, #0f0f23 0%, #1a1a3a 100%);
+            color: #e8e8e8;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .game-container {
+            display: grid;
+            grid-template-columns: 300px 1fr 300px;
+            gap: 30px;
+            align-items: start;
+            max-width: 1200px;
+            width: 100%;
+        }
+
+        .board-section {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .coordinates {
+            display: flex;
+            color: #888;
+            font-size: 14px;
+            font-weight: 600;
+        }
+
+        .coord-top {
+            gap: 2px;
+            margin-left: 25px;
+        }
+
+        .coord-left {
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        .coord-item {
+            width: 50px;
+            height: 50px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .board-wrapper {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .chess-board {
+            width: 400px;
+            height: 400px;
+            display: grid;
+            grid-template-columns: repeat(8, 1fr);
+            border: 3px solid #654321;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.5);
+        }
+
+        .square {
+            width: 50px;
+            height: 50px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 32px;
+            cursor: pointer;
+            user-select: none;
+            transition: all 0.15s ease;
+        }
+
+        .square.light {
+            background: #f0d9b5;
+        }
+
+        .square.dark {
+            background: #b58863;
+        }
+
+        .square:hover {
+            filter: brightness(1.1);
+        }
+
+        .square.selected {
+            background: #7dd3fc !important;
+            box-shadow: inset 0 0 0 3px #0284c7;
+        }
+
+        .square.possible-move {
+            position: relative;
+        }
+
+        .square.possible-move::after {
+            content: '';
+            position: absolute;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: rgba(34, 197, 94, 0.8);
+        }
+
+        .square.possible-move.has-piece::after {
+            width: 100%;
+            height: 100%;
+            border-radius: 0;
+            background: rgba(239, 68, 68, 0.3);
+            border: 2px solid rgba(239, 68, 68, 0.8);
+        }
+
+        .square.last-move {
+            background: rgba(251, 191, 36, 0.6) !important;
+        }
+
+        .panel {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 16px;
+            padding: 24px;
+        }
+
+        .panel h3 {
+            margin-bottom: 16px;
+            color: #f1f5f9;
+            font-size: 18px;
+        }
+
+        .status {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 16px;
+            border-radius: 12px;
+            text-align: center;
+            margin-bottom: 20px;
+            font-weight: 600;
+        }
+
+        .status.thinking {
+            background: linear-gradient(90deg, #3b82f6, #8b5cf6);
+            animation: pulse 2s ease-in-out infinite;
+        }
+
+        .status.your-turn {
+            background: linear-gradient(90deg, #10b981, #059669);
+        }
+
+        .status.game-over {
+            background: linear-gradient(90deg, #ef4444, #dc2626);
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 0.8; }
+            50% { opacity: 1; }
+        }
+
+        .btn {
+            background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+            color: white;
+            border: none;
+            padding: 12px 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            margin: 4px 0;
+            transition: all 0.2s ease;
+            width: 100%;
+        }
+
+        .btn:hover:not(:disabled) {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
+        }
+
+        .btn:disabled {
+            background: rgba(255, 255, 255, 0.1);
+            cursor: not-allowed;
+            opacity: 0.5;
+        }
+
+        .btn.danger {
+            background: linear-gradient(135deg, #ef4444, #dc2626);
+        }
+
+        .btn.success {
+            background: linear-gradient(135deg, #10b981, #059669);
+        }
+
+        .form-group {
+            margin-bottom: 16px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-size: 14px;
+            color: #cbd5e1;
+        }
+
+        select, input[type="range"] {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 8px;
+            background: rgba(0, 0, 0, 0.3);
+            color: #e8e8e8;
+            font-size: 14px;
+        }
+
+        .slider-container {
+            position: relative;
+            margin: 16px 0;
+        }
+
+        .slider-value {
+            position: absolute;
+            right: 0;
+            top: -24px;
+            font-size: 12px;
+            color: #64748b;
+        }
+
+        .move-history {
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            padding: 12px;
+            height: 150px;
+            overflow-y: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            line-height: 1.4;
+        }
+
+        .game-info {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+            margin-bottom: 20px;
+            font-size: 14px;
+        }
+
+        .info-item {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 12px;
+            border-radius: 8px;
+        }
+
+        .info-label {
+            color: #94a3b8;
+            font-size: 12px;
+            margin-bottom: 4px;
+        }
+
+        .info-value {
+            color: #f1f5f9;
+            font-weight: 600;
+        }
+
+        .thinking-indicator {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .spinner {
+            width: 16px;
+            height: 16px;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-top: 2px solid #fff;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .error {
+            background: rgba(239, 68, 68, 0.2);
+            color: #fca5a5;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 12px;
+            margin-top: 8px;
+            display: none;
+        }
+
+        @media (max-width: 1024px) {
+            .game-container {
+                grid-template-columns: 1fr;
+                gap: 20px;
+                justify-items: center;
+            }
+            
+            .chess-board {
+                width: 320px;
+                height: 320px;
+            }
+            
+            .square {
+                font-size: 24px;
+            }
+            
+            .coord-item {
+                width: 40px;
+                height: 40px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="game-container">
+        <!-- Left Panel -->
+        <div class="panel">
+            <h3>Game Status</h3>
+            <div id="gameStatus" class="status">Ready to play</div>
+            
+            <div class="game-info">
+                <div class="info-item">
+                    <div class="info-label">Turn</div>
+                    <div class="info-value" id="currentTurn">-</div>
+                </div>
+                <div class="info-item">
+                    <div class="info-label">You are</div>
+                    <div class="info-value" id="playerColor">-</div>
+                </div>
+                <div class="info-item">
+                    <div class="info-label">Level</div>
+                    <div class="info-value" id="currentDifficulty">-</div>
+                </div>
+                <div class="info-item">
+                    <div class="info-label">Engine</div>
+                    <div class="info-value" id="engineStatus">Checking...</div>
+                </div>
+            </div>
+
+            <div class="move-history" id="moveHistory">
+                <em>No moves yet</em>
+            </div>
+        </div>
+
+        <!-- Chess Board -->
+        <div class="board-section">
+            <div class="coordinates coord-top">
+                <div class="coord-item">a</div>
+                <div class="coord-item">b</div>
+                <div class="coord-item">c</div>
+                <div class="coord-item">d</div>
+                <div class="coord-item">e</div>
+                <div class="coord-item">f</div>
+                <div class="coord-item">g</div>
+                <div class="coord-item">h</div>
+            </div>
+            
+            <div class="board-wrapper">
+                <div class="coordinates coord-left">
+                    <div class="coord-item">8</div>
+                    <div class="coord-item">7</div>
+                    <div class="coord-item">6</div>
+                    <div class="coord-item">5</div>
+                    <div class="coord-item">4</div>
+                    <div class="coord-item">3</div>
+                    <div class="coord-item">2</div>
+                    <div class="coord-item">1</div>
+                </div>
+                
+                <div class="chess-board" id="chessBoard"></div>
+            </div>
+        </div>
+
+        <!-- Right Panel -->
+        <div class="panel">
+            <h3>Game Controls</h3>
+            
+            <div class="form-group">
+                <label for="colorSelect">Play as:</label>
+                <select id="colorSelect">
+                    <option value="white">White</option>
+                    <option value="black">Black</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label for="difficultySlider">Difficulty</label>
+                <div class="slider-container">
+                    <div class="slider-value" id="difficultyValue">5</div>
+                    <input type="range" id="difficultySlider" min="1" max="10" value="5">
+                </div>
+            </div>
+
+            <button class="btn success" onclick="newGame()">🎮 New Game</button>
+            <button class="btn" onclick="undoMove()" id="undoBtn" disabled>↶ Undo Move</button>
+            <button class="btn" onclick="analyzePosition()" id="analyzeBtn" disabled>🔍 Analyze</button>
+            <button class="btn danger" onclick="deleteGame()" id="deleteBtn" disabled>🗑️ Delete Game</button>
+            
+            <div class="error" id="errorMsg"></div>
+        </div>
+    </div>
+
+    <script>
+        const pieces = {
+            'P': '♙', 'N': '♘', 'B': '♗', 'R': '♖', 'Q': '♕', 'K': '♔',
+            'p': '♟', 'n': '♞', 'b': '♝', 'r': '♜', 'q': '♛', 'k': '♚'
+        };
+
+        let game = {
+            id: null,
+            selectedSquare: null,
+            possibleMoves: [],
+            isThinking: false,
+            playerColor: 'white',
+            state: null
+        };
+
+        async function apiCall(url, options = {}) {
+            try {
+                const response = await fetch(url, {
+                    headers: { 'Content-Type': 'application/json', ...options.headers },
+                    ...options
+                });
+                
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.detail || 'API call failed');
+                }
+                
+                return await response.json();
+            } catch (error) {
+                showError(error.message);
+                throw error;
+            }
+        }
+
+        function initBoard() {
+            const board = document.getElementById('chessBoard');
+            board.innerHTML = '';
+            
+            for (let rank = 8; rank >= 1; rank--) {
+                for (let file = 0; file < 8; file++) {
+                    const square = document.createElement('div');
+                    const squareName = String.fromCharCode(97 + file) + rank;
+                    square.className = `square ${(rank + file) % 2 === 0 ? 'dark' : 'light'}`;
+                    square.id = squareName;
+                    square.onclick = () => handleSquareClick(squareName);
+                    board.appendChild(square);
+                }
+            }
+            updateBoard('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1');
+        }
+
+        async function handleSquareClick(square) {
+            if (game.isThinking || !game.id) return;
+
+            if (game.selectedSquare === square) {
+                clearSelection();
+            } else if (game.selectedSquare && game.possibleMoves.includes(square)) {
+                await makeMove(game.selectedSquare + square);
+            } else {
+                await selectSquare(square);
+            }
+        }
+
+        async function selectSquare(square) {
+            clearSelection();
+            game.selectedSquare = square;
+            document.getElementById(square).classList.add('selected');
+            await getPossibleMoves(square);
+        }
+
+        function clearSelection() {
+            if (game.selectedSquare) {
+                document.getElementById(game.selectedSquare).classList.remove('selected');
+            }
+            game.possibleMoves.forEach(move => {
+                const el = document.getElementById(move);
+                if (el) el.classList.remove('possible-move', 'has-piece');
+            });
+            game.selectedSquare = null;
+            game.possibleMoves = [];
+        }
+
+        async function getPossibleMoves(square) {
+            try {
+                const data = await apiCall(`/possible-moves/${game.id}/${square}`);
+                game.possibleMoves = data.moves;
+                
+                game.possibleMoves.forEach(move => {
+                    const el = document.getElementById(move);
+                    if (el) {
+                        el.classList.add('possible-move');
+                        if (el.textContent.trim()) {
+                            el.classList.add('has-piece');
+                        }
+                    }
+                });
+            } catch (error) {
+                console.error('Error getting possible moves:', error);
+            }
+        }
+
+        async function newGame() {
+            const color = document.getElementById('colorSelect').value;
+            const difficulty = parseInt(document.getElementById('difficultySlider').value);
+            
+            try {
+                const data = await apiCall('/new-game', {
+                    method: 'POST',
+                    body: JSON.stringify({ player_color: color, difficulty })
+                });
+                
+                game.id = data.game_id;
+                game.playerColor = color;
+                
+                updateGameDisplay(data);
+                enableControls();
+                
+                if (color === 'black') {
+                    setTimeout(() => engineMove(), 500);
+                }
+            } catch (error) {
+                console.error('Failed to start new game:', error);
+            }
+        }
+
+        async function makeMove(move) {
+            if (game.isThinking) return;
+            
+            try {
+                const data = await apiCall('/make-move', {
+                    method: 'POST',
+                    body: JSON.stringify({ game_id: game.id, move })
+                });
+                
+                updateGameDisplay(data);
+                clearSelection();
+                
+                if (!data.game_over) {
+                    setTimeout(() => engineMove(), 500);
+                }
+            } catch (error) {
+                clearSelection();
+            }
+        }
+
+        async function engineMove() {
+            if (game.isThinking || !game.id) return;
+            
+            setThinking(true);
+            
+            try {
+                const data = await apiCall(`/engine-move/${game.id}`, { method: 'POST' });
+                updateGameDisplay(data);
+                
+                if (data.last_move) {
+                    highlightLastMove(data.last_move);
+                }
+            } catch (error) {
+                console.error('Engine error:', error);
+            } finally {
+                setThinking(false);
+            }
+        }
+
+        async function undoMove() {
+            if (game.isThinking || !game.id) return;
+            
+            try {
+                const data = await apiCall(`/undo-move/${game.id}`, { method: 'POST' });
+                updateGameDisplay(data);
+                clearSelection();
+            } catch (error) {
+                console.error('Cannot undo:', error);
+            }
+        }
+
+        async function analyzePosition() {
+            if (!game.id) return;
+            
+            try {
+                const data = await apiCall(`/analyze/${game.id}?depth=12`);
+                
+                let analysis = `Best moves (depth ${data.depth}):\n`;
+                data.analysis.slice(0, 3).forEach((move, i) => {
+                    analysis += `${i + 1}. ${move.move_san} (${move.score})\n`;
+                });
+                
+                alert(analysis);
+            } catch (error) {
+                console.error('Analysis failed:', error);
+            }
+        }
+
+        async function deleteGame() {
+            if (!game.id) return;
+            
+            try {
+                await apiCall(`/game/${game.id}`, { method: 'DELETE' });
+                resetGame();
+            } catch (error) {
+                console.error('Failed to delete game:', error);
+            }
+        }
+
+        async function checkEngineStatus() {
+            try {
+                const data = await apiCall('/engine-status');
+                const statusEl = document.getElementById('engineStatus');
+                statusEl.textContent = data.available ? '✓ Ready' : '✗ Error';
+                statusEl.style.color = data.available ? '#10b981' : '#ef4444';
+            } catch (error) {
+                document.getElementById('engineStatus').textContent = '✗ Offline';
+            }
+        }
+
+        function updateGameDisplay(data) {
+            game.state = data;
+            updateBoard(data.board_fen);
+            updateStatus(data);
+            updateMoveHistory(data.move_history);
+            updateGameInfo(data);
+        }
+
+        function updateBoard(fen) {
+            const position = fen.split(' ')[0];
+            const ranks = position.split('/');
+            
+            for (let rank = 0; rank < 8; rank++) {
+                let file = 0;
+                for (let char of ranks[rank]) {
+                    if (isNaN(char)) {
+                        const squareName = String.fromCharCode(97 + file) + (8 - rank);
+                        const square = document.getElementById(squareName);
+                        if (square) square.textContent = pieces[char] || '';
+                        file++;
+                    } else {
+                        const emptySquares = parseInt(char);
+                        for (let i = 0; i < emptySquares; i++) {
+                            const squareName = String.fromCharCode(97 + file) + (8 - rank);
+                            const square = document.getElementById(squareName);
+                            if (square) square.textContent = '';
+                            file++;
+                        }
+                    }
+                }
+            }
+        }
+
+        function updateStatus(data) {
+            const statusEl = document.getElementById('gameStatus');
+            
+            if (data.game_over) {
+                statusEl.textContent = data.result;
+                statusEl.className = 'status game-over';
+            } else if (game.isThinking) {
+                statusEl.innerHTML = '<div class="thinking-indicator"><div class="spinner"></div>Stockfish thinking...</div>';
+                statusEl.className = 'status thinking';
+            } else {
+                const isPlayerTurn = (data.board_fen.split(' ')[1] === 'w' && game.playerColor === 'white') ||
+                                   (data.board_fen.split(' ')[1] === 'b' && game.playerColor === 'black');
+                
+                statusEl.textContent = isPlayerTurn ? 'Your turn' : "Stockfish's turn";
+                statusEl.className = isPlayerTurn ? 'status your-turn' : 'status';
+            }
+        }
+
+        function updateGameInfo(data) {
+            document.getElementById('currentTurn').textContent = 
+                data.board_fen.split(' ')[1] === 'w' ? 'White' : 'Black';
+            document.getElementById('playerColor').textContent = 
+                data.player_color.charAt(0).toUpperCase() + data.player_color.slice(1);
+            document.getElementById('currentDifficulty').textContent = data.difficulty;
+        }
+
+        function updateMoveHistory(moves) {
+            const historyEl = document.getElementById('moveHistory');
+            if (moves.length === 0) {
+                historyEl.innerHTML = '<em>No moves yet</em>';
+                return;
+            }
+            
+            let html = '';
+            for (let i = 0; i < moves.length; i += 2) {
+                const moveNum = Math.floor(i / 2) + 1;
+                const white = moves[i] || '';
+                const black = moves[i + 1] || '';
+                html += `<div>${moveNum}. ${white} ${black}</div>`;
+            }
+            historyEl.innerHTML = html;
+            historyEl.scrollTop = historyEl.scrollHeight;
+        }
+
+        function highlightLastMove(move) {
+            document.querySelectorAll('.last-move').forEach(sq => sq.classList.remove('last-move'));
+            
+            if (move && move.length >= 4) {
+                const from = move.substring(0, 2);
+                const to = move.substring(2, 4);
+                
+                [from, to].forEach(square => {
+                    const el = document.getElementById(square);
+                    if (el) el.classList.add('last-move');
+                });
+            }
+        }
+
+        function setThinking(thinking) {
+            game.isThinking = thinking;
+            if (game.state) updateStatus(game.state);
+        }
+
+        function enableControls() {
+            ['undoBtn', 'analyzeBtn', 'deleteBtn'].forEach(id => {
+                document.getElementById(id).disabled = false;
+            });
+        }
+
+        function resetGame() {
+            game = { id: null, selectedSquare: null, possibleMoves: [], isThinking: false, playerColor: 'white', state: null };
+            clearSelection();
+            
+            document.getElementById('gameStatus').textContent = 'Ready to play';
+            document.getElementById('gameStatus').className = 'status';
+            ['currentTurn', 'playerColor', 'currentDifficulty'].forEach(id => {
+                document.getElementById(id).textContent = '-';
+            });
+            document.getElementById('moveHistory').innerHTML = '<em>No moves yet</em>';
+            
+            ['undoBtn', 'analyzeBtn', 'deleteBtn'].forEach(id => {
+                document.getElementById(id).disabled = true;
+            });
+            
+            updateBoard('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1');
+        }
+
+        function showError(message) {
+            const errorEl = document.getElementById('errorMsg');
+            errorEl.textContent = message;
+            errorEl.style.display = 'block';
+            setTimeout(() => {
+                errorEl.style.display = 'none';
+            }, 3000);
+        }
+
+        // Event listeners
+        document.getElementById('difficultySlider').oninput = function() {
+            document.getElementById('difficultyValue').textContent = this.value;
+        };
+
+        // Keyboard shortcuts
+        document.addEventListener('keydown', function(e) {
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+            
+            switch(e.key.toLowerCase()) {
+                case 'n': newGame(); break;
+                case 'u': if (!document.getElementById('undoBtn').disabled) undoMove(); break;
+                case 'a': if (!document.getElementById('analyzeBtn').disabled) analyzePosition(); break;
+                case 'escape': clearSelection(); break;
+            }
+        });
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', function() {
+            initBoard();
+            checkEngineStatus();
+        });
+    </script>
+</body>
+</html>
